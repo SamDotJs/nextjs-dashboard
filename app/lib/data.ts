@@ -156,7 +156,7 @@ export async function fetchInvoicesPages(query: string) {
 
 export async function fetchInvoiceById(id: string) {
   unstable_noStore();
-
+  console.log(id);
   try {
     const data = await sql<InvoiceForm>`
       SELECT

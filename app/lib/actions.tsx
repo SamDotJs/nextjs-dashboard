@@ -10,10 +10,17 @@ import { redirect } from 'next/navigation';
 //This schema will validate the formData before saving it to a database.
 const FormSchema = z.object({
   id: z.string(),
-  customerId: z.string(),
+  customerId: z.string({
+    invalid_type_error: 'Please select a customer.',
+  }),
   //amount field is specifically set to coerce (change) from a string to a number
-  amount: z.coerce.number(),
-  status: z.enum(['pending', 'paid']),
+  amount: z.coerce
+    .number()
+    //Let's tell Zod we always want the amount greater than 0 with the .gt() function
+    .gt(0, {message: 'Please enter an amount greater than $0.'}),
+  status: z.enum(['pending', 'paid'], {
+    invalid_type_error: 'Please select an invoice status.',
+  }),
   date: z.string(),
 });
 
@@ -21,8 +28,19 @@ const CreateInvoice = FormSchema.omit({ id: true, date: true });
 
 // Use Zod to update the expected types
 const UpdateInvoice = FormSchema.omit({ id: true, date: true });
- 
-export async function createInvoice(formData: FormData) {
+
+//State for useFormState hook in create-form.tsx
+export type State = {
+    errors?: {
+      customerId?: string[];
+      amount?: string[];
+      status?: string[];
+    };
+    message?: string | null;
+};
+
+//prevState - contains the state passed from the useFormState hook. You won't be using it in the action in this example, but it's a required prop
+export async function createInvoice(prevState: State, formData: FormData) {
     /*const rawFormData = {
         customerId: formData.get('customerId'),
         amount: formData.get('amount'),
@@ -35,11 +53,24 @@ export async function createInvoice(formData: FormData) {
 
     //OU
     //pass the rawFormData to CreateInvoice to validate the types with Zob FormSchema
-    const { customerId, amount, status } = CreateInvoice.parse({
+    //safeParse() will return an object containing either a success or error field. This will help handle validation more gracefully without having put this logic inside the try/catch block.
+    const validatedFields  = CreateInvoice.safeParse({
       customerId: formData.get('customerId'),
       amount: formData.get('amount'),
       status: formData.get('status'),
     });
+
+    //If validatedFields isn't successful, we return the function early with the error messages from Zod.
+    if (!validatedFields.success) {
+        return {
+            errors: validatedFields.error.flatten().fieldErrors,
+            message: 'Missing Fields. Failed to Create Invoice.',
+        };
+    }
+
+    // Prepare data for insertion into the database
+    const { customerId, amount, status } = validatedFields.data;
+
     //convert amount to cent to eliminate javascript floating point error
     const amountInCents = amount * 100;
     //create a new date with the format "YYYY-MM-DD"
@@ -64,15 +95,23 @@ export async function createInvoice(formData: FormData) {
     redirect('/dashboard/invoices');
 }
 
-export async function updateInvoice(id: string, formData: FormData) {
+export async function updateInvoice(id: string, prevState: State, formData: FormData) {
     //Extracting data from formData
     //pass the raw formData to CreateInvoice to validate the types with Zob FormSchema
-    const { customerId, amount, status } = UpdateInvoice.parse({
+    const validatedFields = UpdateInvoice.safeParse({
       customerId: formData.get('customerId'),
       amount: formData.get('amount'),
       status: formData.get('status'),
     });
    
+    if (!validatedFields.success) {
+        return {
+          errors: validatedFields.error.flatten().fieldErrors,
+          message: 'Missing Fields. Failed to Update Invoice.',
+        };
+    }
+    
+    const { customerId, amount, status } = validatedFields.data;
     //Converting the amount to cents.
     const amountInCents = amount * 100;
    
